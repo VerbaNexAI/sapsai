@@ -1,0 +1,111 @@
+# Despliegue en Dokploy (https://sapsai.iscoutb.dev). Difiere de docker-compose.prod.yml en que:
+#   - no publica puertos ni lleva certbot: Traefik de Dokploy termina el HTTPS (dominio del servicio "frontend", puerto 80);
+#   - no usa container_name ni env_file: las variables se definen en Dokploy → Environment;
+#   - los datos van en volúmenes con nombre y cada servicio tiene límites de CPU y memoria.
+# Variables: DOMINIO, DB_USERNAME, DB_PASSWORD, DB_NAME, JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, SESSION_SECRET,
+# DEFAULT_EMAIL/USERNAME/PASSWORD, GOOGLE_CLIENT_ID/SECRET, EMAIL_*, R2_*.
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    command: ["postgres", "-c", "shared_buffers=48MB", "-c", "effective_cache_size=128MB",
+              "-c", "work_mem=4MB", "-c", "maintenance_work_mem=32MB", "-c", "max_connections=40"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 192M
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      HOST: 0.0.0.0
+      PORT: "5000"
+      DATABASE_URL: postgresql://${DB_USERNAME}:${DB_PASSWORD}@db:5432/${DB_NAME}
+      CLASSIFY_SERVICE_URL: http://classifier:8000/
+      FRONTEND_URL: https://sapsai.${DOMINIO:-iscoutb.dev}
+      GOOGLE_CALLBACK_URL: https://sapsai.${DOMINIO:-iscoutb.dev}/api/v1/auth/google/callback
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      SESSION_SECRET: ${SESSION_SECRET}
+      DEFAULT_EMAIL: ${DEFAULT_EMAIL}
+      DEFAULT_USERNAME: ${DEFAULT_USERNAME}
+      DEFAULT_PASSWORD: ${DEFAULT_PASSWORD}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_REFRESH_TOKEN: ${GOOGLE_REFRESH_TOKEN:-}
+      EMAIL_HOST: ${EMAIL_HOST:-smtp.gmail.com}
+      EMAIL_PORT: ${EMAIL_PORT:-465}
+      EMAIL_SECURE: ${EMAIL_SECURE:-true}
+      EMAIL_USER: ${EMAIL_USER:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-SAPSAI}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME}
+      R2_PUBLIC_BASE_URL: ${R2_PUBLIC_BASE_URL}
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 512M
+
+  classifier:
+    build:
+      context: ./classifier
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME}
+      R2_PUBLIC_BASE_URL: ${R2_PUBLIC_BASE_URL}
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 2G
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        VITE_API_URL: /api/v1
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      # Sin certificado local el frontend arranca con nginx.temp.conf (HTTP, puerto 80); Traefik pone el HTTPS.
+      DOMAIN: sapsai.${DOMINIO:-iscoutb.dev}
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
+
+volumes:
+  pgdata:
