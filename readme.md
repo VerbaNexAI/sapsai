@@ -101,12 +101,10 @@ Antes de desplegar la aplicación en producción, asegúrate de tener:
 2. **Permisos sudo** para ejecutar comandos Docker
 3. **Dominio configurado** apuntando a la IP del servidor
 4. **Puertos 80 y 443** abiertos en el firewall
-5. **Archivo `.env`** en la raíz del proyecto con las siguientes variables:
+5. **Archivo `.env`** (desarrollo) o **`.env.prod`** (producción) en la raíz del proyecto con todas las variables consolidadas:
    - `DOMAIN`: El dominio donde se desplegará la aplicación (ej: `example.com`)
    - `EMAIL`: Email para notificaciones de Let's Encrypt (ej: `admin@example.com`)
-6. **Archivo `backend/.env.prod`** con las variables de entorno del backend para producción:
-   - `DATABASE_URL`: URL de conexión a la base de datos PostgreSQL
-   - Otras variables de entorno necesarias para el backend
+   - `DATABASE_URL`, variables de Cloudflare R2, credenciales OAuth, JWT, etc.
 
 ### Script de Despliegue (`deploy.sh`)
 
@@ -234,7 +232,7 @@ sudo docker compose -f docker-compose.prod.yml logs certbot
 **Problema: Los servicios no inician**
 
 1. Verifica los logs: `sudo docker compose -f docker-compose.prod.yml logs`
-2. Verifica que el archivo `.env` y `backend/.env.prod` estén correctamente configurados
+2. Verifica que el archivo `.env` o `.env.prod` en la raíz esté correctamente configurado
 3. Verifica que la base de datos esté accesible
 
 **Problema: El frontend no carga**

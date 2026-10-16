@@ -13,8 +13,8 @@
     "test:integration": "bun test src/__tests__/integration",
     "test:stress": "bun run src/__tests__/utils/stress-test-classify.js",
     "prisma:generate": "bunx prisma generate",
-    "prisma:migrate": "bunx prisma migrate dev",
-    "prisma:studio": "bunx prisma studio",
+    "prisma:migrate": "bunx dotenv -e ../.env -- prisma migrate dev || bunx prisma migrate dev",
+    "prisma:studio": "bunx dotenv -e ../.env -- prisma studio || bunx prisma studio",
     "cleanup-r2": "bun tests/cleanup-r2.js"
   },
   "devDependencies": {

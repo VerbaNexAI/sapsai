@@ -4,7 +4,7 @@ services:
     container_name: leaf-db
     restart: unless-stopped
     env_file:
-      - ./backend/.env
+      - ./.env
     ports:
       - "5433:5432"
     volumes:
@@ -30,7 +30,7 @@ services:
     ports:
       - "5000:5000"
     env_file:
-      - ./backend/.env
+      - ./.env
     environment:
       - NODE_ENV=development
       - DATABASE_URL=postgresql://${POSTGRES_USER:-leafuser}:${POSTGRES_PASSWORD:-sanautos2022}@db:5432/${POSTGRES_DB:-leafapp}?schema=public
@@ -51,6 +51,8 @@ services:
       context: ./classifier
     container_name: leaf-classifier
     restart: unless-stopped
+    env_file:
+      - ./.env
     volumes:
       - ./classifier/models:/app/models
       - ./classifier/backups:/app/backups
@@ -69,7 +71,7 @@ services:
     ports:
       - "5173:5173"
     env_file:
-      - ./frontend/.env
+      - ./.env
     restart: unless-stopped
     volumes:
       - ./frontend:/app
@@ -87,7 +89,7 @@ services:
       - backend
       - classifier
     env_file:
-      - ./backend/.env
+      - ./.env
     environment:
       - NODE_ENV=test
       - BACKEND_URL=http://backend:5000
