@@ -8,6 +8,8 @@ import plantClassifierRoutes from "./routes/plantClassifier";
 import userRoutes from "./routes/user";
 import adminRoutes from "./routes/admin";
 import speciesRoutes from "./routes/species";
+import notificationsRoutes from "./routes/notifications";
+import webhookRoutes from "./routes/webhook";
 import prisma from "./lib/prisma";
 import {
   createDefaultAdmin,
@@ -27,19 +29,6 @@ createDefaultAdmin()
         console.error("Error creating default species:", error);
       })
       .then(() => {
-        // updateEntriedSpecies()
-        //   .catch((error) => {
-        //     console.error("Error updating species:", error);
-        //   })
-        //   .then(() => {
-        //     updateTaggedHealthy()
-        //       .catch((error) => {
-        //         console.error("Error updating tagged healthy:", error);
-        //       })
-        //       .then(() => {
-        //         console.log("All updates completed successfully");
-        //       });
-        //   });
       });
   });
 
@@ -99,5 +88,7 @@ app.use("/api/plant-classifier", plantClassifierRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/species", speciesRoutes);
+app.use("/api/notifications", notificationsRoutes);
+app.use("/api/internal/webhook", webhookRoutes);
 
 export default app;

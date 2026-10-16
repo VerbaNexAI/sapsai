@@ -11,6 +11,8 @@ function ModelSettings() {
     restoreModelVersion,
     retrainModel,
     getTrainingStatus,
+    getRetrainPreview,
+    getMetrics,
     trainingStatus,
     isLoading,
     error,
@@ -19,6 +21,12 @@ function ModelSettings() {
   const [selectedVersion, setSelectedVersion] = useState(null);
   const [feedback, setFeedback] = useState(null);
   const [isRetraining, setIsRetraining] = useState(false);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewData, setPreviewData] = useState(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [showMetricsModal, setShowMetricsModal] = useState(false);
+  const [metricsData, setMetricsData] = useState(null);
+  const [isMetricsLoading, setIsMetricsLoading] = useState(false);
   const pollingIntervalRef = useRef(null);
 
   // Determine if training is in progress from the status endpoint
@@ -51,45 +59,10 @@ function ModelSettings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run on mount
 
-  // Set up polling when training status changes
+  // Update local state based on training status from endpoint
   useEffect(() => {
-    const model = "especies";
-
-    // Update local state based on training status from endpoint
     setIsRetraining(trainingStatus?.is_training === true);
-
-    if (trainingStatus?.is_training) {
-      // Start polling if training is in progress
-      pollingIntervalRef.current = setInterval(() => {
-        getTrainingStatus(model).then((status) => {
-          if (status && !status.is_training) {
-            // Training completed
-            setIsRetraining(false);
-            if (pollingIntervalRef.current) {
-              clearInterval(pollingIntervalRef.current);
-              pollingIntervalRef.current = null;
-            }
-            // Refresh versions list
-            getModelVersions(model);
-          }
-        });
-      }, 5000); // Poll every 5 seconds
-    } else {
-      // Stop polling if training is not in progress
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
-    }
-
-    // Cleanup on unmount or when training status changes
-    return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trainingStatus?.is_training]); // Only depend on is_training to avoid infinite loops
+  }, [trainingStatus?.is_training]);
 
   const sortedVersions = useMemo(() => {
     if (!speciesVersions?.versions) return [];
@@ -131,23 +104,51 @@ function ModelSettings() {
     }
   };
 
-  const handleRetrain = async () => {
-    // Check training status before attempting to retrain
+  const handleShowPreview = async () => {
     const model = "especies";
     try {
       setFeedback(null);
-
-      // Refresh training status before attempting retrain
       const status = await getTrainingStatus(model);
       if (status?.is_training) {
         setFeedback({
           type: "error",
-          message:
-            "Training is already in progress. Please wait for it to complete.",
+          message: "Training is already in progress. Please wait for it to complete.",
         });
         return;
       }
+      setIsPreviewLoading(true);
+      setShowPreviewModal(true);
+      const data = await getRetrainPreview(model);
+      setPreviewData(data);
+    } catch (err) {
+      setFeedback({ type: "error", message: "Could not load preview data." });
+      setShowPreviewModal(false);
+    } finally {
+      setIsPreviewLoading(false);
+    }
+  };
 
+  const handleShowMetrics = async () => {
+    const model = "especies";
+    try {
+      setFeedback(null);
+      setIsMetricsLoading(true);
+      setShowMetricsModal(true);
+      const data = await getMetrics(model);
+      setMetricsData(data);
+    } catch (err) {
+      setFeedback({ type: "error", message: err?.response?.data?.error || "Could not load metrics data." });
+      setShowMetricsModal(false);
+    } finally {
+      setIsMetricsLoading(false);
+    }
+  };
+
+  const handleConfirmRetrain = async () => {
+    setShowPreviewModal(false);
+    const model = "especies";
+    try {
+      setFeedback(null);
       await retrainModel(model);
       setFeedback({
         type: "success",
@@ -158,9 +159,7 @@ function ModelSettings() {
         title: "Retraining started",
         message: "Model retraining started. This may take several minutes.",
       });
-      // Refresh status after starting to update button state
       await getTrainingStatus(model);
-      // Status polling will be handled by the useEffect
     } catch (err) {
       const errorMessage =
         err.response?.data?.error ||
@@ -175,7 +174,6 @@ function ModelSettings() {
         title: "Retraining failed",
         message: errorMessage,
       });
-      // Refresh status in case of error
       getTrainingStatus(model);
     }
   };
@@ -270,7 +268,14 @@ function ModelSettings() {
                         backgroundColor: isSelected ? "#e3f2fd" : "transparent",
                       }}
                     >
-                      <td style={{ padding: "0.75rem" }}>v{version.version}</td>
+                      <td style={{ padding: "0.75rem" }}>
+                        v{version.version}
+                        {speciesVersions?.current_version === version.version && (
+                          <span style={{ marginLeft: "0.5rem", padding: "0.2rem 0.5rem", fontSize: "0.8rem", backgroundColor: "#e8f5e9", color: "#2e7d32", borderRadius: "12px", fontWeight: "bold" }}>
+                            Current
+                          </span>
+                        )}
+                      </td>
                       <td style={{ padding: "0.75rem" }}>{formattedDate}</td>
                       <td style={{ padding: "0.75rem" }}>
                         <div
@@ -333,7 +338,7 @@ function ModelSettings() {
           </button>
           <button
             type="button"
-            onClick={handleRetrain}
+            onClick={handleShowPreview}
             disabled={isLoading || isTrainingInProgress}
             style={{
               padding: "0.65rem 1.2rem",
@@ -347,6 +352,21 @@ function ModelSettings() {
             }}
           >
             {isTrainingInProgress ? "Training in progress..." : "Retrain model"}
+          </button>
+          <button
+            type="button"
+            onClick={handleShowMetrics}
+            style={{
+              marginLeft: "1rem",
+              padding: "0.65rem 1.2rem",
+              borderRadius: "6px",
+              border: "1px solid #1976d2",
+              backgroundColor: "transparent",
+              color: "#1976d2",
+              cursor: "pointer",
+            }}
+          >
+            Info (Metrics)
           </button>
           {isTrainingInProgress && trainingStatus?.started_at && (
             <div
@@ -364,6 +384,141 @@ function ModelSettings() {
           {renderFeedback()}
         </div>
       </section>
+
+      {showPreviewModal && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: "rgba(0,0,0,0.5)", display: "flex",
+          justifyContent: "center", alignItems: "center", zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: "#fff", padding: "2rem", borderRadius: "8px",
+            maxWidth: "600px", width: "100%", maxHeight: "80vh", overflowY: "auto",
+            boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)"
+          }}>
+            <h2 className="text-xl font-medium mb-4" style={{ color: "#333" }}>Training Preview</h2>
+            {isPreviewLoading ? (
+              <p style={{ color: "#666" }}>Loading preview data...</p>
+            ) : previewData ? (
+              <div>
+                <div style={{ backgroundColor: "#f9f9f9", padding: "1rem", borderRadius: "6px", marginBottom: "1.5rem" }}>
+                  <p style={{ marginBottom: "0.5rem" }}><strong>Total existing images:</strong> {previewData.total_images}</p>
+                  <p style={{ marginBottom: "0.5rem" }}><strong>Total images to augment:</strong> {previewData.total_to_augment}</p>
+                  <p><strong>Target per class:</strong> {previewData.target_per_class}</p>
+                </div>
+                <div>
+                  <h3 className="font-medium" style={{ color: "#333", marginBottom: "0.75rem" }}>Details per class:</h3>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.95rem" }}>
+                    <thead>
+                      <tr style={{ backgroundColor: "#f0f0f0" }}>
+                        <th style={{ textAlign: "left", padding: "0.75rem", borderBottom: "2px solid #ddd" }}>Class</th>
+                        <th style={{ textAlign: "center", padding: "0.75rem", borderBottom: "2px solid #ddd" }}>Current</th>
+                        <th style={{ textAlign: "center", padding: "0.75rem", borderBottom: "2px solid #ddd" }}>To Augment</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewData.classes && Object.entries(previewData.classes).map(([className, stats]) => (
+                        <tr key={className}>
+                          <td style={{ padding: "0.75rem", borderBottom: "1px solid #eee" }}>{className}</td>
+                          <td style={{ padding: "0.75rem", borderBottom: "1px solid #eee", textAlign: "center" }}>{stats.current}</td>
+                          <td style={{ padding: "0.75rem", borderBottom: "1px solid #eee", textAlign: "center", color: stats.to_augment > 0 ? "#1976d2" : "#555" }}>
+                            {stats.to_augment > 0 ? `+${stats.to_augment}` : "0"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ marginTop: "2rem", display: "flex", justifyContent: "flex-end", gap: "1rem" }}>
+                  <button
+                    onClick={() => setShowPreviewModal(false)}
+                    style={{ padding: "0.65rem 1.2rem", borderRadius: "6px", backgroundColor: "#e0e0e0", color: "#333", border: "none", cursor: "pointer", fontWeight: "500" }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmRetrain}
+                    style={{ padding: "0.65rem 1.2rem", borderRadius: "6px", backgroundColor: "#2e7d32", color: "#fff", border: "none", cursor: "pointer", fontWeight: "500" }}
+                  >
+                    Confirm & Start Training
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p style={{ color: "#b71c1c", marginBottom: "1.5rem" }}>Failed to load preview data.</p>
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <button
+                    onClick={() => setShowPreviewModal(false)}
+                    style={{ padding: "0.65rem 1.2rem", borderRadius: "6px", backgroundColor: "#e0e0e0", color: "#333", border: "none", cursor: "pointer" }}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showMetricsModal && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: "rgba(0,0,0,0.5)", display: "flex",
+          justifyContent: "center", alignItems: "center", zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: "#fff", padding: "2rem", borderRadius: "8px",
+            maxWidth: "900px", width: "95%", maxHeight: "90vh", overflowY: "auto",
+            boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)"
+          }}>
+            <h2 className="text-xl font-medium mb-4" style={{ color: "#333" }}>Model Metrics</h2>
+            {isMetricsLoading ? (
+              <p style={{ color: "#666" }}>Loading metrics...</p>
+            ) : metricsData ? (
+              <div>
+                <div style={{ backgroundColor: "#f9f9f9", padding: "1rem", borderRadius: "6px", marginBottom: "1.5rem" }}>
+                  <p style={{ marginBottom: "0.5rem" }}><strong>Model:</strong> {metricsData.model}</p>
+                  <p style={{ marginBottom: "0.5rem" }}><strong>Number of classes:</strong> {metricsData.metrics?.num_classes}</p>
+                  <p><strong>Classes trained:</strong> {metricsData.metrics?.classes?.join(", ")}</p>
+                </div>
+                
+                {metricsData.image_base64 && (
+                  <div style={{ marginTop: "1rem" }}>
+                    <h3 className="font-medium" style={{ color: "#333", marginBottom: "0.75rem" }}>Outputs</h3>
+                    <img 
+                      src={metricsData.image_base64} 
+                      alt="Training Metrics and Confusion Matrix" 
+                      style={{ width: "100%", height: "auto", border: "1px solid #ddd", borderRadius: "4px" }} 
+                    />
+                  </div>
+                )}
+                
+                <div style={{ marginTop: "2rem", display: "flex", justifyContent: "flex-end" }}>
+                  <button
+                    onClick={() => setShowMetricsModal(false)}
+                    style={{ padding: "0.65rem 1.2rem", borderRadius: "6px", backgroundColor: "#1976d2", color: "#fff", border: "none", cursor: "pointer", fontWeight: "500" }}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p style={{ color: "#b71c1c", marginBottom: "1.5rem" }}>Failed to load metrics data.</p>
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <button
+                    onClick={() => setShowMetricsModal(false)}
+                    style={{ padding: "0.65rem 1.2rem", borderRadius: "6px", backgroundColor: "#e0e0e0", color: "#333", border: "none", cursor: "pointer" }}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -6,6 +6,9 @@ import History from "./Pages/History";
 import Login from "./Pages/Login";
 import About from "./Pages/About";
 import Settings from "./Pages/Settings";
+import UserSettings from "./Pages/Settings/User";
+import ModelSettings from "./Pages/Settings/Model";
+import PreferencesSettings from "./Pages/Settings/Preferences";
 import Admin from "./Pages/Admin";
 import AdminClassificationDetails from "./Pages/Admin/Classifications/ClassificationDetails";
 import AdminUserDetails from "./Pages/Admin/Users/UserDetails";
@@ -76,7 +79,11 @@ function App() {
               <Settings />
             </ProtectedRoute>
           }
-        />
+        >
+          <Route path="user" element={<UserSettings />} />
+          <Route path="model" element={<ModelSettings />} />
+          <Route path="preferences" element={<PreferencesSettings />} />
+        </Route>
         <Route
           path="/settings/request-to-contribute"
           element={

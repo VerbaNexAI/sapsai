@@ -2,14 +2,14 @@
   "versions": [
     {
       "version": 1,
-      "timestamp_str": "20251118T150737",
-      "filename": "modelo_hojas_v0001_20251118T150737.h5",
-      "path": "/home/keilevv/projects/leaf_classifier/classifier/backups/modelo_hojas_v0001_20251118T150737.h5",
-      "timestamp": "2025-11-18T15:07:37",
-      "size_bytes": 32453232,
-      "notes": "Versión detectada automáticamente - 2025-11-18T15:07:37"
+      "timestamp_str": "20260927T000000",
+      "filename": "modelo_hojas.h5",
+      "path": "/home/keilevv/projects/leaf_classifier/classifier/backups/modelo_hojas.h5",
+      "timestamp": "2026-09-27T00:00:00",
+      "size_bytes": 11546584,
+      "notes": "Base version"
     }
   ],
   "current_version": 1,
-  "last_updated": "2026-08-17T19:19:57.148975"
+  "last_updated": "2026-09-27T00:00:00"
 }

@@ -1,11 +1,8 @@
 import { useEffect } from "react";
-import { Tab, TabPanel, TabPanels, TabGroup, TabList } from "@headlessui/react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import useUser from "../../hooks/useUser";
 import { FaUser, FaCog, FaBrain } from "react-icons/fa";
 import useStore from "../../hooks/useStore";
-import PreferencesForm from "./PreferencesForm";
-import DetailsForm from "./DetailsForm";
-import ModelSettings from "./ModelSettings";
 
 function classNames(...classes) {
   return classes.filter(Boolean).join(" ");
@@ -14,20 +11,36 @@ function classNames(...classes) {
 export default function Settings() {
   const { user: userStore } = useStore();
   const { getUser, user, loading } = useUser();
-
-  const onUpdateUser = (user) => {
-    getUser(user.id);
-  };
+  const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
-    if (userStore.id) {
+    if (userStore?.id) {
       getUser(userStore.id);
     }
-  }, [userStore.id]);
+  }, [userStore?.id]);
+
+  useEffect(() => {
+    // Redirect /settings to /settings/user by default
+    if (
+      location.pathname === "/settings" ||
+      location.pathname === "/settings/"
+    ) {
+      navigate("/settings/user", { replace: true });
+    }
+  }, [location.pathname, navigate]);
+
+  const navLinkClass = ({ isActive }) =>
+    classNames(
+      "flex-1 flex items-center justify-center space-x-2 py-4 px-6 text-sm font-medium focus:outline-none cursor-pointer",
+      isActive
+        ? "text-green-600 border-b-2 border-green-600 bg-white"
+        : "text-gray-500 hover:text-gray-700 hover:bg-gray-100",
+    );
 
   return (
-    <div className=" mx-auto">
-      <div className="bg-white  shadow-lg overflow-hidden">
+    <div className="mx-auto">
+      <div className="bg-white shadow-lg overflow-hidden">
         {/* Header */}
         <div className="bg-gradient-to-r from-green-600 to-emerald-600">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -40,80 +53,30 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* Tabs */}
-        <TabGroup>
-          <TabList className="flex border-b border-gray-200 bg-gray-50 flex-wrap">
-            {user?.role === "ADMIN" && (
-              <Tab
-                className={({ selected }) =>
-                  classNames(
-                    "flex-1 py-4 px-6 text-sm font-medium focus:outline-none cursor-pointer",
-                    selected
-                      ? "text-green-600 border-b-2 border-green-600 bg-white"
-                      : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
-                  )
-                }
-              >
-                <div className="flex items-center justify-center space-x-2">
-                  <FaBrain className="h-4 w-4" />
-                  <span>Model Settings</span>
-                </div>
-              </Tab>
-            )}
-            <Tab
-              className={({ selected }) =>
-                classNames(
-                  "flex-1 py-4 px-6 text-sm font-medium focus:outline-none cursor-pointer",
-                  selected
-                    ? "text-green-600 border-b-2 border-green-600 bg-white"
-                    : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
-                )
-              }
-            >
-              <div className="flex items-center justify-center space-x-2">
-                <FaUser className="h-4 w-4" />
-                <span>User Settings</span>
-              </div>
-            </Tab>
-            <Tab
-              className={({ selected }) =>
-                classNames(
-                  "flex-1 py-4 px-6 text-sm font-medium focus:outline-none cursor-pointer",
-                  selected
-                    ? "text-green-600 border-b-2 border-green-600 bg-white"
-                    : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
-                )
-              }
-            >
-              <div className="flex items-center justify-center space-x-2">
-                <FaCog className="h-4 w-4" />
-                <span>Preferences</span>
-              </div>
-            </Tab>
-          </TabList>
+        {/* Tabs as Navigation Links */}
+        <div className="flex border-b border-gray-200 bg-gray-50 flex-wrap">
+          <NavLink to="/settings/user" className={navLinkClass}>
+            <FaUser className="h-4 w-4" />
+            <span>User Settings</span>
+          </NavLink>
+          {user?.role === "ADMIN" && (
+            <NavLink to="/settings/model" className={navLinkClass}>
+              <FaBrain className="h-4 w-4" />
+              <span>Model Settings</span>
+            </NavLink>
+          )}
+          <NavLink to="/settings/preferences" className={navLinkClass}>
+            <FaCog className="h-4 w-4" />
+            <span>Preferences</span>
+          </NavLink>
+        </div>
 
-          <TabPanels>
-            {/* Model Settings Panel */}
-            {user?.role === "ADMIN" && (
-              <TabPanel className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                <ModelSettings />
-              </TabPanel>
-            )}
-            {/* User Settings Panel */}
-            <TabPanel className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-              <DetailsForm
-                user={user}
-                loading={loading}
-                onUpdate={onUpdateUser}
-              />
-            </TabPanel>
-
-            {/* Preferences Panel */}
-            <TabPanel className="p-6">
-              <PreferencesForm user={user} />
-            </TabPanel>
-          </TabPanels>
-        </TabGroup>
+        {/* Dynamic Content */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <Outlet
+            context={{ user, loading, onUpdateUser: (u) => getUser(u.id) }}
+          />
+        </div>
       </div>
     </div>
   );

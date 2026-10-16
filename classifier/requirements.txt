@@ -6,6 +6,9 @@ numpy
 python-multipart
 boto3
 python-dotenv
+matplotlib
+seaborn
+scikit-learn
 # Testing dependencies
 pytest>=7.4.0
 pytest-cov>=4.1.0

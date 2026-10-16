@@ -10,8 +10,11 @@ import {
   FaLeaf,
   FaShieldAlt,
   FaInfoCircle,
+  FaBell,
+  FaSpinner,
 } from "react-icons/fa";
 import { showNotification } from "../../Common/Notification";
+import useClassifier from "../../../hooks/useClassifier";
 
 let defaultPages = [
   {
@@ -37,8 +40,72 @@ function Header({ className = "" }) {
     user,
     logout: logoutFromStore,
     setUiState,
+    accessToken,
   } = useStore();
   const { logout } = useAuth();
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const { getTrainingStatus } = useClassifier();
+  
+  useEffect(() => {
+    if (!accessToken) return;
+    const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+    const source = new EventSource(`${apiUrl}/notifications/stream?token=${accessToken}`);
+    
+    source.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        
+        setNotifications((prev) => {
+          // If a success/error message arrives, remove the corresponding 'training' status
+          if (data.type === 'success' || data.type === 'error') {
+            return [data, ...prev.filter(n => !(n.type === 'training' && n.model === data.model))];
+          }
+          // If a new training starts, filter out existing training entries for the same model to avoid duplicates
+          if (data.type === 'training') {
+            return [data, ...prev.filter(n => !(n.type === 'training' && n.model === data.model))];
+          }
+          return [data, ...prev];
+        });
+        
+        setUnreadCount((prev) => prev + 1);
+        showNotification({ type: data.type === 'training' ? 'info' : data.type, title: data.title, message: data.message });
+      } catch(e) {
+        console.error("Error parsing notification:", e);
+      }
+    };
+    
+    return () => source.close();
+  }, [accessToken]);
+
+  useEffect(() => {
+    // Check initial training status on mount
+    if (user?.role === 'ADMIN') {
+      const models = ['especies', 'hojas', 'plantas'];
+      models.forEach(model => {
+        getTrainingStatus(model).then(status => {
+          if (status?.is_training) {
+            setNotifications(prev => {
+              const newNotif = {
+                id: `training-${model}-${Date.now()}`,
+                type: 'training',
+                title: `Training ${model}...`,
+                message: `Model ${model} is currently training...`,
+                model: model,
+                timestamp: status.started_at || new Date().toISOString()
+              };
+              // Check if already in list
+              if (prev.some(n => n.type === 'training' && n.model === model)) return prev;
+              
+              setUnreadCount(c => c + 1);
+              return [newNotif, ...prev];
+            });
+          }
+        }).catch(e => console.error("Error fetching status for", model, e));
+      });
+    }
+  }, [user]);
 
   const navigate = useNavigate();
   const LogoButton = () => {
@@ -222,6 +289,69 @@ function Header({ className = "" }) {
                             </button>
                           )}
                         </Menu.Item>
+                      </div>
+                    </Menu.Items>
+                  </Transition>
+                </Menu>
+              )}
+
+              {/* Notifications Dropdown */}
+              {user && (
+                <Menu as="div" className="relative inline-block text-left ml-2">
+                  <div>
+                    <Menu.Button
+                      onClick={() => setUnreadCount(0)}
+                      className="relative p-2 rounded-full text-gray-600 hover:text-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                    >
+                      <span className="sr-only">View notifications</span>
+                      <FaBell className="h-5 w-5" aria-hidden="true" />
+                      {unreadCount > 0 && (
+                        <span className="absolute top-0 right-0 block h-4 w-4 rounded-full bg-red-500 text-white text-xs text-center font-bold">
+                          {unreadCount > 9 ? "9+" : unreadCount}
+                        </span>
+                      )}
+                    </Menu.Button>
+                  </div>
+                  <Transition
+                    as={Fragment}
+                    enter="transition ease-out duration-100"
+                    enterFrom="transform opacity-0 scale-95"
+                    enterTo="transform opacity-100 scale-100"
+                    leave="transition ease-in duration-75"
+                    leaveFrom="transform opacity-100 scale-100"
+                    leaveTo="transform opacity-0 scale-95"
+                  >
+                    <Menu.Items className="z-50 absolute right-0 mt-2 w-80 origin-top-right divide-y divide-gray-100 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none max-h-96 overflow-y-auto">
+                      <div className="px-4 py-3 border-b border-gray-200">
+                        <p className="text-sm font-medium text-gray-900">Notifications</p>
+                      </div>
+                      <div className="py-1">
+                        {notifications.length === 0 ? (
+                          <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                            No notifications yet
+                          </div>
+                        ) : (
+                          notifications.map((notification) => (
+                            <Menu.Item key={notification.id}>
+                              {({ active }) => (
+                                <div
+                                  className={`${
+                                    active ? "bg-gray-50" : ""
+                                  } px-4 py-3 border-b border-gray-100 text-sm flex flex-col`}
+                                >
+                                  <span className={`font-semibold flex items-center gap-2 ${notification.type === 'error' ? 'text-red-600' : notification.type === 'training' ? 'text-blue-600' : 'text-green-600'}`}>
+                                    {notification.type === 'training' && <FaSpinner className="animate-spin text-blue-600 h-3 w-3" />}
+                                    {notification.title}
+                                  </span>
+                                  <span className="text-gray-700 mt-1">{notification.message}</span>
+                                  <span className="text-xs text-gray-400 mt-2">
+                                    {new Date(notification.timestamp).toLocaleString()}
+                                  </span>
+                                </div>
+                              )}
+                            </Menu.Item>
+                          ))
+                        )}
                       </div>
                     </Menu.Items>
                   </Transition>

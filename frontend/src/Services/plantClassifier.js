@@ -74,5 +74,16 @@ const plantClassifierService = {
       }
     );
   },
+  getRetrainPreview(model, accessToken) {
+    return axios.get(`${apiUrl}/plant-classifier/retrain/preview`, {
+      params: { model },
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+  },
+  getMetrics(model, accessToken) {
+    return axios.get(`${apiUrl}/plant-classifier/retrain/${model}/metrics`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+  },
 };
 export default plantClassifierService;
