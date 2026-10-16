@@ -161,7 +161,9 @@ def create_model_version(model_name: str, version_notes: Optional[str] = None) -
     
     # Actualizar metadatos
     metadata['versions'] = versions
-    metadata['current_version'] = next_version
+    # Don't set current_version here — this backup is the OLD model.
+    # The new retrained model is unversioned, so current_version = None.
+    metadata['current_version'] = None
     metadata['last_updated'] = timestamp.isoformat()
     
     # Guardar metadatos
@@ -435,6 +437,12 @@ def restore_model_version(model_name: str, version: int) -> Dict:
             print(f"🔄 Modelo original restaurado desde backup")
             raise RuntimeError(f"Error validando modelo restaurado: {e}. Modelo original restaurado.")
         raise
+    
+    # Update current_version in metadata to the restored version
+    metadata = load_version_metadata(model_name)
+    metadata['current_version'] = version
+    metadata['last_updated'] = datetime.utcnow().isoformat()
+    save_version_metadata(model_name, metadata)
     
     # Obtener información de la versión restaurada
     versions = list_model_versions(model_name)

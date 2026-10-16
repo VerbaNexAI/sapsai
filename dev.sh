@@ -74,6 +74,21 @@ fi
 
 print_status "Starting Leaf Classifier Development Environment..."
 
+# Load root .env file if it exists
+if [ -f ".env" ]; then
+    print_status "Loading environment variables from root .env..."
+    set -a
+    source .env
+    set +a
+elif [ -f "../.env" ]; then
+    print_status "Loading environment variables from root .env..."
+    set -a
+    source ../.env
+    set +a
+else
+    print_warning "No root .env file found!"
+fi
+
 # Start Classifier Service (Flask)
 print_status "Starting Classifier Service..."
 cd classifier

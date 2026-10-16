@@ -15,6 +15,8 @@ const {
   restoreModelVersion,
   retrainModel,
   getTrainingStatus,
+  getRetrainPreview,
+  getMetrics,
 } = controller();
 
 const router = express.Router();
@@ -49,7 +51,9 @@ router.post(
   authenticateToken,
   restoreModelVersion
 );
+router.get("/retrain/preview", authenticateToken, getRetrainPreview);
 router.post("/retrain/:model", authenticateToken, retrainModel);
 router.get("/retrain/:model/status", authenticateToken, getTrainingStatus);
+router.get("/retrain/:model/metrics", authenticateToken, getMetrics);
 
 export default router;

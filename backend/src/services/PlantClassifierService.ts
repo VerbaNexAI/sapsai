@@ -257,4 +257,18 @@ export class PlantClassifierService {
     const response = await axios.get(`${classifierServiceUrl}/retrain/status`, { params: { model } });
     return response.data;
   }
+
+  async getRetrainPreview(model: string, role: string) {
+    if (role !== "ADMIN") throw new Error("Unauthorized");
+    if (!model || !this.availableModels.includes(model)) throw new Error("Invalid or missing model. Use especies|hojas|plantas");
+    const response = await axios.get(`${classifierServiceUrl}/retrain/preview`, { params: { model } });
+    return response.data;
+  }
+
+  async getMetrics(model: string, role: string) {
+    if (role !== "ADMIN") throw new Error("Unauthorized");
+    if (!model || !this.availableModels.includes(model)) throw new Error("Invalid or missing model. Use especies|hojas|plantas");
+    const response = await axios.get(`${classifierServiceUrl}/retrain/metrics`, { params: { model } });
+    return response.data;
+  }
 }

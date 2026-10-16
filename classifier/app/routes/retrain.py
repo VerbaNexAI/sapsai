@@ -15,11 +15,22 @@ from ..utils.label_detector import detect_new_classes, update_config_with_new_cl
 from ..utils.cloudflare_downloader import download_verified_images_from_r2
 from ..utils.model_versioning import create_model_version, list_model_versions, restore_model_version, get_version_info
 from ..models_loader import reload_model
+import urllib.request
+import json
 
 # Global training status tracker
 # Format: {model_name: {'is_training': bool, 'started_at': datetime, 'thread': Thread}}
 training_status = {}
 training_lock = threading.Lock()
+
+def send_training_webhook(model_name: str, status: str, message: str):
+    url = "http://localhost:5000/api/internal/webhook/training-status"
+    data = {"model": model_name, "status": status, "message": message}
+    try:
+        req = urllib.request.Request(url, data=json.dumps(data).encode('utf-8'), headers={'Content-Type': 'application/json'})
+        urllib.request.urlopen(req, timeout=5)
+    except Exception as e:
+        print(f"Failed to send webhook: {e}")
 
 def get_gpu_info():
     """Obtiene información sobre las GPUs disponibles y su configuración"""
@@ -58,6 +69,69 @@ def get_gpu_info():
 
 def init_retrain_route():
     bp = APIRouter(prefix="/retrain", tags=["retrain"])
+
+    @bp.get("/preview")
+    def preview_retrain(model: str = Query(..., description="Modelo a reentrenar")):
+        if model not in ['especies', 'hojas', 'plantas']:
+            raise HTTPException(status_code=400, detail="Modelo inválido")
+            
+        # Migrate initial Kaggle dataset to retrain structure if needed
+        try:
+            from ..utils.dataset_migrator import migrate_initial_dataset
+            migrate_initial_dataset(DATA_DIR, model)
+        except Exception as e:
+            print(f"Error migrating initial dataset: {e}")
+            
+        if model == 'especies':
+            try:
+                if all([
+                    CLOUDFLARE_R2_BUCKET_NAME,
+                    CLOUDFLARE_R2_ACCOUNT_ID,
+                    CLOUDFLARE_R2_ACCESS_KEY_ID,
+                    CLOUDFLARE_R2_SECRET_ACCESS_KEY
+                ]):
+                    print("Sincronizando imágenes verificadas de Cloudflare R2 para el preview...")
+                    download_verified_images_from_r2(
+                        bucket_name=CLOUDFLARE_R2_BUCKET_NAME,
+                        account_id=CLOUDFLARE_R2_ACCOUNT_ID,
+                        access_key_id=CLOUDFLARE_R2_ACCESS_KEY_ID,
+                        secret_access_key=CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+                        prefix=CLOUDFLARE_R2_PREFIX,
+                        base_dir=None
+                    )
+            except Exception as e:
+                print(f"Error sincronizando imágenes de R2 en preview: {e}")
+
+        data_path = os.path.join(DATA_DIR, model, "train")
+        if not os.path.exists(data_path):
+            return {"status": "error", "message": "Directorio de datos no existe"}
+            
+        classes = {}
+        total_images = 0
+        total_to_augment = 0
+        target_per_class = 1000
+        
+        for cls in os.listdir(data_path):
+            cls_path = os.path.join(data_path, cls)
+            if os.path.isdir(cls_path):
+                imgs = [f for f in os.listdir(cls_path) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+                count = len(imgs)
+                classes[cls] = {
+                    "current": count,
+                    "to_augment": max(0, target_per_class - count) if count > 0 else 0
+                }
+                total_images += count
+                total_to_augment += classes[cls]["to_augment"]
+                
+        return {
+            "status": "success",
+            "model": model,
+            "classes": classes,
+            "total_images": total_images,
+            "total_to_augment": total_to_augment,
+            "target_per_class": target_per_class
+        }
+
 
     @bp.post(
         "",
@@ -148,6 +222,13 @@ def init_retrain_route():
                     print(f"   Continuando con el entrenamiento con los datos existentes...")
                     print(f"{'='*60}\n")
             
+            # Combinar datos iniciales
+            try:
+                from ..utils.dataset_migrator import migrate_initial_dataset
+                migrate_initial_dataset(DATA_DIR, model_name)
+            except Exception as e:
+                print(f"Error migrando datos iniciales: {e}")
+            
             # Habilitar memory growth para todas las GPUs disponibles
             gpus = tf.config.list_physical_devices('GPU')
             print(f"\n{'='*60}")
@@ -198,6 +279,26 @@ def init_retrain_route():
                 print(error_msg)
                 print(f"   Por favor, agrega imágenes de entrenamiento organizadas por clases.")
                 raise ValueError(f"Training data directory is empty: {train_data_path}")
+
+            # --- NUEVO PASO DE AUMENTO DE IMÁGENES ---
+            print(f"Realizando aumento de imágenes en {train_data_path} si es necesario...")
+            try:
+                from ..utils.augmentation import augment_images_in_dir
+                target_count = 1000
+                total_augmented = 0
+                for cls in os.listdir(train_data_path):
+                    cls_dir = os.path.join(train_data_path, cls)
+                    if os.path.isdir(cls_dir):
+                        print(f"Verificando clase {cls}...")
+                        augmented = augment_images_in_dir(cls_dir, target_count)
+                        total_augmented += augmented
+                        if augmented > 0:
+                            print(f"  + {augmented} imágenes generadas para {cls}")
+                print(f"✅ Aumento completado. Total de imágenes generadas: {total_augmented}")
+            except Exception as aug_e:
+                print(f"⚠️ Error durante el aumento de imágenes: {aug_e}")
+            # -----------------------------------------
+
 
             # Detectar clases en los datos DESPUÉS de descargar (si se descargaron)
             print(f"Detectando clases en los datos para {model_name}...")
@@ -598,7 +699,7 @@ def init_retrain_route():
                     if use_validation and val_gen and val_gen.samples > 0:
                         fit_kwargs['validation_data'] = val_gen
                     
-                    model.fit(train_gen, **fit_kwargs)
+                    history = model.fit(train_gen, **fit_kwargs)
                 except (tf.errors.ResourceExhaustedError, RuntimeError, Exception) as e:
                     error_msg = str(e)
                     # Detectar errores de memoria de GPU
@@ -661,10 +762,69 @@ def init_retrain_route():
                             if use_validation and val_gen and val_gen.samples > 0:
                                 fit_kwargs['validation_data'] = val_gen
                             
-                            model.fit(train_gen, **fit_kwargs)
+                            history = model.fit(train_gen, **fit_kwargs)
                     else:
                         # Re-lanzar el error si no es de memoria
                         raise
+
+                # GENERATE METRICS
+                try:
+                    import matplotlib
+                    matplotlib.use('Agg')
+                    import matplotlib.pyplot as plt
+                    import seaborn as sns
+                    from sklearn.metrics import classification_report, confusion_matrix
+                    import numpy as np
+                    import json
+                    
+                    eval_gen = val_gen if (use_validation and val_gen and val_gen.samples > 0) else train_gen
+                    eval_gen.reset()
+                    y_true = eval_gen.classes
+                    y_pred_probs = model.predict(eval_gen, verbose=0)
+                    y_pred = np.argmax(y_pred_probs, axis=1)
+                    
+                    class_names = [k for k, v in sorted(eval_gen.class_indices.items(), key=lambda item: item[1])]
+                    cm = confusion_matrix(y_true, y_pred)
+                    
+                    fig, axes = plt.subplots(1, 2, figsize=(18, 7))
+                    ax = axes[0]
+                    ax.plot(history.history['loss'], label='Train Loss', color='#1f77b4', lw=2)
+                    if 'val_loss' in history.history:
+                        ax.plot(history.history['val_loss'], label='Val Loss', color='#ff7f0e', lw=2)
+                    ax.plot(history.history['accuracy'], label='Train Acc', color='#2ca02c', lw=2, ls='--')
+                    if 'val_accuracy' in history.history:
+                        ax.plot(history.history['val_accuracy'], label='Val Acc', color='#d62728', lw=2, ls='--')
+                    ax.set_title(f'{model_name.upper()} — Training Metrics', fontsize=14)
+                    ax.set_xlabel('Epoch')
+                    ax.set_ylabel('Value')
+                    ax.grid(True, linestyle='--', alpha=0.6)
+                    ax.legend()
+                    
+                    ax = axes[1]
+                    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=class_names, yticklabels=class_names, cbar=False, ax=ax)
+                    ax.set_title(f'{model_name.upper()} — Confusion Matrix', fontsize=14)
+                    ax.set_xlabel('Predicted')
+                    ax.set_ylabel('True')
+                    plt.xticks(rotation=45, ha='right')
+                    plt.yticks(rotation=0)
+                    plt.tight_layout()
+                    
+                    metrics_img_path = os.path.join(MODEL_DIR, f'training_metrics_{model_name}.png')
+                    plt.savefig(metrics_img_path, dpi=150, bbox_inches='tight')
+                    plt.close()
+                    
+                    metrics_json_path = os.path.join(MODEL_DIR, f'training_metrics_{model_name}.json')
+                    with open(metrics_json_path, 'w') as f:
+                        json.dump({
+                            "classes": class_names,
+                            "num_classes": len(class_names),
+                            "samples": eval_gen.samples
+                        }, f)
+                    
+                    print("✅ Metrics and Confusion Matrix saved successfully.")
+                except Exception as metrics_e:
+                    print(f"⚠️ Error saving metrics: {metrics_e}")
+
 
             training_error = None
             try:
@@ -749,6 +909,9 @@ def init_retrain_route():
                         # Store error information if training failed
                         if training_error:
                             training_status[model_name]['error'] = training_error
+                            send_training_webhook(model_name, "error", f"Error during training: {training_error}")
+                        else:
+                            send_training_webhook(model_name, "success", f"Model {model_name} successfully retrained!")
 
         # Detectar clases antes de iniciar el entrenamiento para mostrar información inmediata
         class_info = detect_new_classes(model)
@@ -756,6 +919,8 @@ def init_retrain_route():
         # Start training thread
         thread = threading.Thread(target=train_thread, args=(model,))
         thread.daemon = True  # Allow main process to exit even if thread is running
+        
+        send_training_webhook(model, "training", f"Model {model} is currently training...")
         thread.start()
         
         # Store thread reference
@@ -957,10 +1122,17 @@ def init_retrain_route():
         
         try:
             versions = list_model_versions(model)
+            
+            # Read current_version from metadata (updated by restore/retrain)
+            from ..utils.model_versioning import load_version_metadata
+            metadata = load_version_metadata(model)
+            current_version = metadata.get('current_version')
+
             return {
                 "model": model,
                 "total_versions": len(versions),
                 "versions": versions,
+                "current_version": current_version,
                 "message": f"Se encontraron {len(versions)} versiones del modelo {model}"
             }
         except Exception as e:
@@ -1058,4 +1230,40 @@ def init_retrain_route():
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error restaurando versión: {str(e)}")
     
+    @bp.get(
+        "/metrics",
+        summary="Obtener métricas del último entrenamiento",
+        description="Obtiene el JSON de métricas y la imagen generada durante el último entrenamiento del modelo."
+    )
+    def get_metrics(model: str = Query(..., description="Modelo a consultar: especies, hojas o plantas")):
+        if model not in ['especies', 'hojas', 'plantas']:
+            raise HTTPException(status_code=400, detail="Modelo inválido")
+            
+        import os
+        import json
+        import base64
+        from ..config import MODEL_DIR
+        
+        json_path = os.path.join(MODEL_DIR, f'training_metrics_{model}.json')
+        img_path = os.path.join(MODEL_DIR, f'training_metrics_{model}.png')
+        
+        if not os.path.exists(json_path) or not os.path.exists(img_path):
+            raise HTTPException(status_code=404, detail="Métricas no encontradas para este modelo. Es posible que aún no se haya entrenado con la nueva versión.")
+            
+        try:
+            with open(json_path, 'r') as f:
+                metrics_data = json.load(f)
+                
+            with open(img_path, 'rb') as f:
+                img_base64 = base64.b64encode(f.read()).decode('utf-8')
+                
+            return {
+                "status": "success",
+                "model": model,
+                "metrics": metrics_data,
+                "image_base64": f"data:image/png;base64,{img_base64}"
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error leyendo métricas: {str(e)}")
+
     return bp

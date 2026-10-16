@@ -193,6 +193,44 @@ function useClassifier() {
     [accessToken, getTrainingStatus]
   );
 
+  const getRetrainPreview = useCallback(
+    (model) => {
+      setIsLoading(true);
+      return plantClassifierService
+        .getRetrainPreview(model, accessToken)
+        .then((response) => {
+          setIsLoading(false);
+          return response.data;
+        })
+        .catch((error) => {
+          console.error("Error getting retrain preview:", error);
+          setError(error);
+          setIsLoading(false);
+          throw error;
+        });
+    },
+    [accessToken]
+  );
+
+  const getMetrics = useCallback(
+    (model) => {
+      setIsLoading(true);
+      return plantClassifierService
+        .getMetrics(model, accessToken)
+        .then((response) => {
+          setIsLoading(false);
+          return response.data;
+        })
+        .catch((error) => {
+          console.error("Error getting metrics:", error);
+          setError(error);
+          setIsLoading(false);
+          throw error;
+        });
+    },
+    [accessToken]
+  );
+
   return {
     uploadClassification,
     getUploads,
@@ -204,6 +242,8 @@ function useClassifier() {
     getModelVersions,
     retrainModel,
     getTrainingStatus,
+    getRetrainPreview,
+    getMetrics,
     shapes,
     uploads,
     upload,

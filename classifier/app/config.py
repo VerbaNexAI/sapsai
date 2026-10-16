@@ -2,13 +2,23 @@ import os
 import tensorflow as tf
 from pathlib import Path
 
-# Cargar variables de entorno desde .env si existe
+# Cargar variables de entorno desde .env si existe (raíz del proyecto o directorio local)
 try:
     from dotenv import load_dotenv
-    env_path = Path(__file__).parent.parent / '.env'
-    if env_path.exists():
-        load_dotenv(env_path)
-        print(f"✅ Variables de entorno cargadas desde {env_path}")
+    root_env = Path(__file__).parent.parent.parent / '.env'
+    root_env_prod = Path(__file__).parent.parent.parent / '.env.prod'
+    local_env = Path(__file__).parent.parent / '.env'
+    
+    # Priority: local_env -> root_env or root_env_prod depending on ENV
+    if local_env.exists():
+        load_dotenv(local_env)
+        print(f"✅ Variables de entorno cargadas desde {local_env}")
+    elif root_env.exists():
+        load_dotenv(root_env)
+        print(f"✅ Variables de entorno cargadas desde {root_env}")
+    elif root_env_prod.exists():
+        load_dotenv(root_env_prod)
+        print(f"✅ Variables de entorno cargadas desde {root_env_prod}")
 except ImportError:
     # python-dotenv no está instalado, usar variables de entorno del sistema
     pass
@@ -54,7 +64,8 @@ _DEFAULT_SPECIES = [
     'cucumis-sativus_deseased',
     'cucumis-sativus_healthy',
     'discorea-alata-l_deseased',
-    'discorea-alata-l_healthy',
+    'mangifera-indica_deseased',
+    'mangifera-indica_healthy',
     'manihot-esculenta_deseased',
     'manihot-esculenta_healthy',
     'solanum-melongena_deseased',

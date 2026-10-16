@@ -1,16 +1,24 @@
 #!/bin/bash
 set -e
 
-# Load environment variables
-if [ ! -f .env ]; then
-    echo "Error: .env file not found in the project root"
+# Load environment variables (prefer .env.prod for production deployment)
+if [ -f .env.prod ]; then
+    echo "Loading environment variables from .env.prod..."
+    set -a
+    source .env.prod
+    set +a
+elif [ -f .env ]; then
+    echo "Loading environment variables from .env..."
+    set -a
+    source .env
+    set +a
+else
+    echo "Error: Neither .env.prod nor .env file found in the project root"
     exit 1
 fi
 
-source .env
-
 if [ -z "$DOMAIN" ] || [ -z "$EMAIL" ]; then
-    echo "Error: DOMAIN and EMAIL must be set in .env file"
+    echo "Error: DOMAIN and EMAIL must be set in .env.prod or .env file"
     exit 1
 fi
 
