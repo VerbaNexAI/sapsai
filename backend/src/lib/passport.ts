@@ -32,6 +32,8 @@ passport.use(
   )
 );
 
+console.log("ClientId", process.env.GOOGLE_CLIENT_ID)
+
 // Google Strategy
 passport.use(
   new GoogleStrategy(
