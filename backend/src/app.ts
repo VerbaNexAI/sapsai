@@ -92,4 +92,7 @@ app.use("/api/species", speciesRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/internal/webhook", webhookRoutes);
 
+console.log("ClientId: ", process.env.GOOGLE_CLIENT_ID)
+console.log("CallbackUrl: ", process.env.GOOGLE_CALLBACK_URL)
+
 export default app;
