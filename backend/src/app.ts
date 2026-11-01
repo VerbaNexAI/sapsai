@@ -46,7 +46,7 @@ app.use(
   cors({
     origin: [
       process.env.FRONTEND_URL || "http://localhost:5173",
-      "http://plantai.lab.utb.edu.co", // dominio web
+      "http://sapsai.iscutb.dev", // dominio web
       "capacitor://localhost", // app Android/iOS con Capacitor
       "ionic://localhost", // por si usas Ionic
       "http://localhost", // pruebas locales
@@ -94,5 +94,5 @@ app.use("/api/internal/webhook", webhookRoutes);
 
 console.log("ClientId: ", process.env.GOOGLE_CLIENT_ID)
 console.log("CallbackUrl: ", process.env.GOOGLE_CALLBACK_URL)
-
+console.log("VITE_API_URL: ", process.env.VITE_API_URL)
 export default app;
