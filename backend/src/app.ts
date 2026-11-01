@@ -94,5 +94,5 @@ app.use("/api/internal/webhook", webhookRoutes);
 
 console.log("ClientId: ", process.env.GOOGLE_CLIENT_ID)
 console.log("CallbackUrl: ", process.env.GOOGLE_CALLBACK_URL)
-console.log("VITE_API_URL: ", process.env.VITE_API_URL)
+console.log("backend_url: ", process.env.VITE_API_URL)
 export default app;
